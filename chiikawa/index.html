@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>치이카와 인형뽑기 지도</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#fffaf3; --panel:#ffffff; --ink:#3a3340; --muted:#8a8090; --line:#f3e6ea;
+    --pink:#ff8fb1; --pink-d:#f06d97; --blue:#6aa9ff; --chip:#ffeef4;
+    --gold:#ffbf3c; --lilac:#a98bff; --grey:#a9a2b0;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:"Noto Sans KR",system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+  .app{display:grid;grid-template-columns:390px 1fr;height:100vh;height:100dvh}
+  aside{display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--line);min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  header{padding:16px 18px 8px}
+  h1{margin:0;font-family:"Gaegu","Noto Sans KR",sans-serif;font-size:27px;color:var(--pink-d);display:flex;align-items:center;gap:6px;letter-spacing:-.5px}
+  .sub{margin:2px 0 0;font-size:12px;color:var(--muted);line-height:1.5}
+  .tabs{display:flex;gap:6px;padding:8px 18px 10px}
+  .tab{flex:1;padding:10px 6px;border-radius:12px;background:#f7f2f5;color:var(--muted);font-size:13px;font-weight:700;text-align:center;cursor:pointer;border:2px solid transparent}
+  .tab.on{background:var(--chip);color:var(--pink-d);border-color:var(--pink)}
+  .pane{display:none}
+  .pane.on{display:block}
+  .controls{padding:2px 18px 12px;display:flex;flex-direction:column;gap:10px}
+  .row{display:flex;gap:8px}
+  input[type=text]{flex:1;min-width:0;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;font:inherit;font-size:14px;outline:none;background:#fffcfd}
+  input[type=text]:focus{border-color:var(--pink)}
+  button{font:inherit;font-size:14px;border:0;border-radius:12px;padding:10px 14px;cursor:pointer;background:var(--pink);color:#fff;font-weight:700;white-space:nowrap}
+  button:hover{background:var(--pink-d)}
+  button.icon{padding:10px 12px;background:var(--chip);color:var(--pink-d)}
+  .toggles{display:flex;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--muted)}
+  .toggles label{display:flex;align-items:center;gap:5px;cursor:pointer}
+  .hint{font-size:12px;color:var(--muted);background:#fff7e6;border:1px solid #ffe6b3;border-radius:12px;padding:9px 11px;line-height:1.55}
+  .settings{display:none;font-size:12px;color:var(--muted);flex-direction:column;gap:6px;background:#fffafc;border:1px solid var(--line);border-radius:12px;padding:10px}
+  .settings.open{display:flex}
+  .settings input{font-size:12px;padding:7px 9px}
+  .status-bar{position:sticky;top:0;z-index:5;background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;padding:8px 10px 8px 18px;min-height:46px}
+  .status{flex:1;font-size:13px;color:var(--muted)}
+  .status b{color:var(--pink-d)}
+  .status.err{color:#c0392b}
+  #expandBtn{display:none;padding:6px 12px;font-size:12px;border-radius:999px;background:var(--chip);color:var(--pink-d)}
+  .list{padding:6px 10px 24px}
+  .item{padding:12px 10px;border-bottom:1px solid #f8eef2;border-radius:14px;cursor:pointer;display:flex;gap:10px;align-items:flex-start}
+  .item:hover,.item.active{background:var(--chip)}
+  .badge{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:15px;margin-top:1px;background:#f4f0f6}
+  .badge.claw{background:#ffe1ec}.badge.mine{background:#fff1cc}.badge.goods{background:#eee6ff}
+  .badge.num{background:var(--grey);color:#fff;font-size:12px;font-weight:700}
+  .item .body{flex:1;min-width:0}
+  .item .name{font-weight:700;font-size:14px}
+  .item .addr{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.45}
+  .item .note{font-size:12px;color:#6d6475;margin-top:4px;line-height:1.5}
+  .item .meta{font-size:11px;margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .tag{background:#f5eff8;color:#6c5a7a;padding:2px 8px;border-radius:999px}
+  .tag.dist{background:#e8f1ff;color:#3a78d6}
+  .tag.claw{background:#ffe1ec;color:#d9497a}
+  .tag.goods{background:#eee6ff;color:#6e4fd6}
+  .tag.mine{background:#fff1cc;color:#a87300}
+  .tag.warn{background:#f2f2f2;color:#888}
+  .item a.src{font-size:11px;color:#3a78d6}
+  .star{flex:none;align-self:center;background:#fff;border:1.5px solid #ffd77a;color:#c79100;border-radius:999px;padding:6px 10px;font-size:12px}
+  .star:hover{background:#fff7dd}
+  .star.on{background:var(--gold);border-color:var(--gold);color:#fff}
+  .empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.7}
+  .mapwrap{position:relative;min-height:0}
+  #map{height:100%;width:100%}
+  #areaBtn{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:1000;border-radius:999px;padding:10px 18px;box-shadow:0 3px 12px rgba(0,0,0,.2);display:none}
+  #areaBtn.show{display:block}
+  #myLocBtn{position:absolute;right:12px;bottom:28px;z-index:1000;width:46px;height:46px;padding:0;border-radius:50%;background:#fff;color:#3a78d6;box-shadow:0 3px 12px rgba(0,0,0,.25);display:grid;place-items:center}
+  #myLocBtn svg{width:24px;height:24px}
+  #myLocBtn.busy svg{animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .pin{width:34px;height:34px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.25);border:2.5px solid #fff}
+  .pin span{transform:rotate(45deg);font-size:15px;line-height:1}
+  .pin.claw{background:var(--pink)}.pin.mine{background:var(--gold)}.pin.goods{background:var(--lilac)}
+  .dot{width:24px;height:24px;border-radius:50%;background:var(--grey);border:2px solid #fff;color:#fff;font-size:10px;font-weight:700;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+  .me{width:18px;height:18px;border-radius:50%;background:#3a78d6;border:3px solid #fff;animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(58,120,214,.55)}70%{box-shadow:0 0 0 16px rgba(58,120,214,0)}100%{box-shadow:0 0 0 0 rgba(58,120,214,0)}}
+  .leaflet-popup-content{font-family:"Noto Sans KR",sans-serif;font-size:13px;line-height:1.55;margin:12px 14px}
+  .pop-name{font-weight:700;font-size:14px;margin-bottom:4px}
+  .pop-row{color:#555}
+  .pop-row a{color:#3a78d6}
+  .pop-star{margin-top:8px;font-size:12px;padding:6px 10px}
+  footer{padding:4px 18px 18px;font-size:11px;color:var(--muted);line-height:1.6}
+  footer a{color:var(--muted)}
+  @media (max-width:800px){
+    .app{grid-template-columns:1fr;grid-template-rows:46% 54%}
+    .app.list-big{grid-template-rows:22% 78%}
+    aside{order:2;border-right:0;box-shadow:0 -4px 14px rgba(0,0,0,.08);border-radius:18px 18px 0 0;margin-top:-12px;position:relative;z-index:1001}
+    .mapwrap{order:1}
+    header{padding:12px 16px 2px}
+    h1{font-size:23px}
+    .sub{display:none}
+    .tabs{padding:8px 16px}
+    .controls{padding:2px 16px 10px;gap:8px}
+    .status-bar{padding-left:16px}
+    #expandBtn{display:block}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <header>
+      <h1>🎀 치이카와 인형뽑기 지도</h1>
+      <p class="sub">공공데이터(청소년게임제공업) + 웹 제보 + 내가 직접 확인한 매장</p>
+    </header>
+    <div class="tabs">
+      <div class="tab on" data-tab="fav" id="tabFav">🎀 치이카와 매장</div>
+      <div class="tab" data-tab="find" id="tabFind">🔍 주변 뽑기방에서 찾기</div>
+    </div>
+
+    <!-- 탭 1: 치이카와 매장 -->
+    <div class="pane on" id="paneFav">
+      <div class="controls">
+        <div class="toggles">
+          <label><input type="checkbox" id="showClaw" checked> 🎀 제보된 뽑기방</label>
+          <label><input type="checkbox" id="showMine" checked> ⭐ 내가 확인</label>
+          <label><input type="checkbox" id="showGoods" checked> 🛍️ 굿즈·가챠샵</label>
+        </div>
+        <div class="hint">⭐는 <b>'주변 뽑기방에서 찾기'</b> 탭에서 치이카와 인형을 직접 본 매장에 표시하면 여기 모입니다. 표시는 이 휴대폰 브라우저에만 저장돼요.</div>
+      </div>
+    </div>
+
+    <!-- 탭 2: 주변 뽑기방에서 찾기 -->
+    <div class="pane" id="paneFind">
+      <div class="controls">
+        <form class="row" id="searchForm">
+          <input type="text" id="regionInput" placeholder="지역 검색 (예: 마포구, 수영구)">
+          <button type="submit">검색</button>
+          <button type="button" class="icon" id="settingsBtn" title="설정" aria-label="설정">⚙️</button>
+        </form>
+        <div class="toggles">
+          <label><input type="checkbox" id="onlyClaw" checked> 인형뽑기 매장만</label>
+          <label><input type="checkbox" id="onlyOpen" checked> 영업중만</label>
+        </div>
+        <div class="settings" id="settings">
+          <label>인형뽑기 판별 키워드 (쉼표 구분)</label>
+          <input type="text" id="kwInput">
+          <label>CORS 프록시 접두어 (브라우저가 API 직접 호출을 막을 때만)</label>
+          <input type="text" id="proxyInput" placeholder="예: https://corsproxy.io/?url=">
+        </div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="status" id="status">현재 위치를 확인하는 중…</div>
+      <button type="button" id="expandBtn">목록 크게 ▲</button>
+    </div>
+    <div class="list" id="list"></div>
+    <footer>
+      제보 매장은 2026-11-11에 웹(SNS·블로그)에서 찾은 정보예요. 경품은 수시로 바뀌니 방문 전 매장 SNS나 전화로 확인하세요.
+      매장 데이터: 행정안전부 문화_청소년게임제공업 조회서비스(공공데이터포털) · 지도: © OpenStreetMap
+      <br><a href="../">← 전체 인형뽑기 지도</a>
+    </footer>
+  </aside>
+  <div class="mapwrap">
+    <div id="map"></div>
+    <button id="areaBtn" type="button">🔍 이 지역 뽑기방 찾기</button>
+    <button id="myLocBtn" type="button" title="내 위치로" aria-label="내 위치로 이동"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+<script>
+/* ===== 설정 ===== */
+const API_URL = "https://apis.data.go.kr/1741000/youth_game_providers/info";
+const SERVICE_KEY = "703ea2a7ba3a85e184ff518bd5f848b1ac39936618e17e68f1374ebd758b3f07";
+const PAGE_SIZE = 100;
+const DEFAULT_KW = "인형,뽑기,크레인,캐치,캣치,피규어,경품,토이,가챠,wakuwaku,와쿠";
+const DEFAULT_CENTER = [37.5665, 126.9780];
+
+/* ===== 웹 제보 매장 (2026-11-11 웹 검색 기준) =====
+   kind: claw = 인형뽑기 매장, goods = 치이카와 굿즈·가챠샵(뽑기 기계 아님)
+   exact: 공공데이터 좌표로 확인한 정확한 위치인지 여부 */
+const REPORTED = [
+  { id:"r-wakuwaku", kind:"claw", name:"와쿠와쿠 광안리점", alias:"공공데이터 상호: wakuwaku",
+    road:"부산광역시 수영구 광안해변로255번길 5, 1-2층 (민락동)", lat:35.155365, lng:129.121656, exact:true,
+    match:"광안해변로255번길 5",
+    note:"산리오·치이카와 등 정품 캐릭터 경품을 취급하는 대형 인형뽑기방으로 SNS에 소개됨(2026년 초).",
+    src:"https://www.threads.com/@busantravel/post/DTZfp1UEpq_", srcName:"Threads @busantravel" },
+  { id:"r-chiikawashop", kind:"goods", name:"치이카와샵 용산점 (공식 매장)",
+    road:"서울 용산구 한강대로21나길 7, 아이파크몰 리빙파크 3층 도파민 스테이션", lat:37.5297, lng:126.9640, exact:false,
+    note:"국내 첫 공식 상설 매장(2026.2.27 오픈). 네이버 예약 입장 기간이 있으니 공식 계정을 확인하세요.",
+    src:"https://x.com/chiikawashop_kr", srcName:"치이카와샵 공식 X" },
+  { id:"r-animate-hongdae", kind:"goods", name:"애니메이트 홍대점",
+    road:"서울 마포구 양화로 188, AK&홍대 5층", lat:37.5577, lng:126.9245, exact:false,
+    note:"애니메이션 굿즈점. 치이카와 재고는 방문 전 확인 필요.",
+    src:"https://tripsoda.com/article/5421", srcName:"트립소다" },
+  { id:"r-gashapon-ak", kind:"goods", name:"가샤폰 스트리트 홍대 AK점",
+    road:"서울 마포구 양화로 188, AK&홍대 4층", lat:37.5575, lng:126.9249, exact:false,
+    note:"캡슐토이(가챠)샵. 치이카와 캡슐 재고는 확인 필요.",
+    src:"https://tripsoda.com/article/5421", srcName:"트립소다" },
+  { id:"r-kokiribap", kind:"goods", name:"코끼리밥 캡슐토이 홍대점",
+    road:"서울 마포구 양화로 161", lat:37.5560, lng:126.9227, exact:false,
+    note:"가챠샵. 치이카와 취급 여부·층수는 현장 확인 필요.",
+    src:"https://tripsoda.com/article/5421", srcName:"트립소다" },
+  { id:"r-pontoy", kind:"goods", name:"폰토이 홍대점",
+    road:"서울 마포구 홍익로6길 30, 1층", lat:37.5544, lng:126.9236, exact:false,
+    note:"가챠샵. 치이카와 기기·재고는 확인 필요.",
+    src:"https://tripsoda.com/article/5421", srcName:"트립소다" },
+  { id:"r-miniso-gangnam", kind:"goods", name:"미니소 강남점",
+    road:"서울 서초구 강남대로 429, 1~3층", lat:37.5016, lng:127.0258, exact:false,
+    note:"치이카와 랜덤 상품·시즌 인형을 판매한다고 소개됨(광고 게시물).",
+    src:"https://www.threads.com/@pikababy0/post/DOQyZsxE-E7", srcName:"Threads @pikababy0" },
+];
+
+proj4.defs("EPSG:5174","+proj=tmerc +lat_0=38 +lon_0=127.0028902777778 +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +units=m +no_defs +towgs84=-115.80,474.99,674.11,1.16,-2.31,-1.63,6.43");
+const toWGS84 = (x, y) => { const [lng, lat] = proj4("EPSG:5174", "WGS84", [x, y]); return [lat, lng]; };
+
+/* ===== 저장 ===== */
+const store = {
+  get(k, d){ try{ return localStorage.getItem(k) ?? d; }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, v); return true; }catch{ return false; } }
+};
+let mine = {};
+try{ mine = JSON.parse(store.get("chiikawaMine", "{}")) || {}; }catch{ mine = {}; }
+const saveMine = () => store.set("chiikawaMine", JSON.stringify(mine));
+
+const kwInput = document.getElementById("kwInput");
+const proxyInput = document.getElementById("proxyInput");
+kwInput.value = store.get("clawKw", DEFAULT_KW);
+proxyInput.value = store.get("clawProxy", "");
+kwInput.addEventListener("change", () => { store.set("clawKw", kwInput.value); renderFind(); });
+proxyInput.addEventListener("change", () => store.set("clawProxy", proxyInput.value.trim()));
+
+/* ===== 지도 ===== */
+const map = L.map("map").setView(DEFAULT_CENTER, 12);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+const favLayer = L.featureGroup().addTo(map);
+const findLayer = L.featureGroup();   // 주변 찾기 탭에서만 지도에 표시
+let meMarker = null, meLatLng = null, distOrigin = null, suppressMove = false;
+
+const statusEl = document.getElementById("status");
+const listEl = document.getElementById("list");
+let tab = "fav";
+let rawRecords = [], currentRegion = "", regionFilter = null;
+
+function setStatus(html, isErr=false){ statusEl.innerHTML = html; statusEl.classList.toggle("err", isErr); }
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtDist = m => m < 1000 ? `${Math.round(m)}m` : `${(m/1000).toFixed(1)}km`;
+const mapLinks = (name, addr) => { const q = encodeURIComponent(name + " " + addr); return `<a href="https://map.naver.com/p/search/${q}" target="_blank" rel="noopener">네이버 지도</a> · <a href="https://map.kakao.com/?q=${q}" target="_blank" rel="noopener">카카오맵</a>`; };
+const pinIcon = (kind, emoji) => L.divIcon({ className:"", html:`<div class="pin ${kind}"><span>${emoji}</span></div>`, iconSize:[34,34], iconAnchor:[17,34], popupAnchor:[0,-30] });
+const reportedFor = r => REPORTED.find(p => p.match && (r.road || "").includes(p.match));
+
+/* ===== 탭 1: 치이카와 매장 ===== */
+function favItems(){
+  const items = [];
+  const showClaw = document.getElementById("showClaw").checked;
+  const showGoods = document.getElementById("showGoods").checked;
+  const showMine = document.getElementById("showMine").checked;
+  const mineIds = new Set(Object.keys(mine));
+  REPORTED.forEach(p => {
+    if(p.kind === "claw" && !showClaw) return;
+    if(p.kind === "goods" && !showGoods) return;
+    items.push({ ...p, type: p.kind, latlng: L.latLng(p.lat, p.lng), starred: [...mineIds].some(id => mine[id].reportedId === p.id) });
+  });
+  if(showMine){
+    Object.entries(mine).forEach(([id, m]) => {
+      if(m.reportedId && items.some(i => i.id === m.reportedId)) return;   // 제보 매장과 같은 곳이면 하나로
+      items.push({ id, type:"mine", name:m.name, road:m.road, latlng:(m.lat && m.lng) ? L.latLng(m.lat, m.lng) : null, exact:true, starred:true, saved:m.ts });
+    });
+  }
+  const origin = meLatLng || distOrigin;
+  items.forEach(i => i.dist = (origin && i.latlng) ? origin.distanceTo(i.latlng) : Infinity);
+  items.sort((a,b) => a.dist - b.dist);
+  return items;
+}
+
+function renderFav(fit=false){
+  favLayer.clearLayers();
+  const items = favItems();
+  const markers = [];
+  items.forEach(it => {
+    const emoji = it.type === "claw" ? "🎀" : it.type === "mine" ? "⭐" : "🛍️";
+    let marker = null;
+    if(it.latlng){
+      marker = L.marker(it.latlng, { icon: pinIcon(it.type, emoji), zIndexOffset: 500 }).bindPopup(favPopup(it)).addTo(favLayer);
+      markers.push(marker);
+    }
+    it._marker = marker;
+  });
+  if(tab !== "fav") return;
+  listEl.innerHTML = "";
+  if(!items.length){
+    listEl.innerHTML = `<div class="empty">표시할 매장이 없어요.<br>'🔍 주변 뽑기방에서 찾기'에서 치이카와 인형이 있는 매장에 ⭐를 눌러 보세요.</div>`;
+  }
+  items.forEach(it => {
+    const el = document.createElement("div");
+    el.className = "item";
+    const typeTag = it.type === "claw" ? `<span class="tag claw">🎀 제보 · 인형뽑기</span>`
+                  : it.type === "mine" ? `<span class="tag mine">⭐ 내가 확인</span>`
+                  : `<span class="tag goods">🛍️ 굿즈·가챠 (뽑기기계 아님)</span>`;
+    el.innerHTML = `<div class="badge ${it.type}">${it.type === "claw" ? "🎀" : it.type === "mine" ? "⭐" : "🛍️"}</div>
+      <div class="body">
+        <div class="name">${esc(it.name)}</div>
+        <div class="addr">${esc(it.road)}</div>
+        ${it.note ? `<div class="note">${esc(it.note)}</div>` : ""}
+        <div class="meta">
+          ${isFinite(it.dist) ? `<span class="tag dist">${fmtDist(it.dist)}</span>` : ""}
+          ${typeTag}
+          ${it.starred && it.type !== "mine" ? `<span class="tag mine">⭐ 내가 확인</span>` : ""}
+          ${it.exact === false ? `<span class="tag warn">대략적 위치</span>` : ""}
+          ${it.src ? `<a class="src" href="${esc(it.src)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">출처: ${esc(it.srcName)}</a>` : ""}
+        </div>
+      </div>
+      ${it.type === "mine" ? `<button class="star on" type="button">⭐ 해제</button>` : ""}`;
+    el.addEventListener("click", () => {
+      document.querySelectorAll(".item.active").forEach(x => x.classList.remove("active"));
+      el.classList.add("active");
+      if(it._marker){ suppressMove = true; map.setView(it.latlng, 16); it._marker.openPopup(); }
+    });
+    const b = el.querySelector(".star");
+    if(b) b.addEventListener("click", e => { e.stopPropagation(); delete mine[it.id]; saveMine(); renderFav(); renderFindMarkers(); });
+    listEl.appendChild(el);
+  });
+  const nClaw = items.filter(i => i.type === "claw").length, nMine = items.filter(i => i.type === "mine" || i.starred).length, nGoods = items.filter(i => i.type === "goods").length;
+  setStatus(`🎀 뽑기방 <b>${nClaw}</b> · ⭐ 내가 확인 <b>${nMine}</b> · 🛍️ 굿즈샵 <b>${nGoods}</b>`);
+  if(fit && markers.length){
+    const near = items.filter(i => i.latlng && i.dist < 30000);
+    if(near.length){ const b = L.latLngBounds(near.map(i => i.latlng)); if(meLatLng) b.extend(meLatLng); suppressMove = true; map.fitBounds(b, { padding:[40,40], maxZoom: 15 }); }
+    else if(meLatLng){ suppressMove = true; map.setView(meLatLng, 13); }
+    else { suppressMove = true; map.fitBounds(favLayer.getBounds(), { padding:[30,30] }); }
+  }
+}
+
+function favPopup(it){
+  return `<div class="pop-name">${it.type === "claw" ? "🎀" : it.type === "mine" ? "⭐" : "🛍️"} ${esc(it.name)}</div>
+    ${it.alias ? `<div class="pop-row" style="font-size:12px;opacity:.75">${esc(it.alias)}</div>` : ""}
+    <div class="pop-row">${esc(it.road)}</div>
+    ${it.note ? `<div class="pop-row" style="margin-top:4px">${esc(it.note)}</div>` : ""}
+    ${it.exact === false ? `<div class="pop-row" style="font-size:12px;color:#999">핀은 대략적 위치예요. 정확한 위치는 아래 지도 링크로 확인하세요.</div>` : ""}
+    ${it.src ? `<div class="pop-row">출처: <a href="${esc(it.src)}" target="_blank" rel="noopener">${esc(it.srcName)}</a></div>` : ""}
+    <div class="pop-row" style="margin-top:6px">${mapLinks(it.name, it.road)}</div>`;
+}
+
+/* ===== 탭 2: 주변 뽑기방에서 찾기 ===== */
+const SIDO = [
+  ["서울","서울특별시"],["부산","부산광역시"],["대구","대구광역시"],["인천","인천광역시"],["광주","광주광역시"],
+  ["대전","대전광역시"],["울산","울산광역시"],["세종","세종특별자치시"],["경기","경기도"],["강원","강원"],
+  ["충청북","충청북도"],["충북","충청북도"],["충청남","충청남도"],["충남","충청남도"],["전라북","전북|전라북도"],["전북","전북|전라북도"],
+  ["전라남","전라남도"],["전남","전라남도"],["경상북","경상북도"],["경북","경상북도"],["경상남","경상남도"],["경남","경상남도"],["제주","제주"]
+];
+function sidoKey(text){ if(!text) return null; for(const [k,v] of SIDO) if(text.includes(k)) return v; return null; }
+
+async function reverseGeocode(lat, lng){
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1&accept-language=ko`;
+  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  if(!res.ok) throw new Error("역지오코딩 실패");
+  const a = (await res.json()).address || {};
+  const pick = (...keys) => keys.map(k => a[k]).find(v => v && /(구|군|시)$/.test(v));
+  const gu = pick("borough","city_district","district","county","suburb");
+  const city = pick("city","town","municipality");
+  const sido = sidoKey(a.province || a.state || a.city || "");
+  if (gu && city && city !== gu && /시$/.test(city) && !/(특별시|광역시|특별자치시)$/.test(city) && /구$/.test(gu)) return { query:`${city} ${gu}`, sido };
+  if (gu) return { query: gu, sido };
+  if (city) return { query: city, sido };
+  throw new Error("구 정보를 찾지 못했습니다");
+}
+
+async function searchAt(lat, lng, label){
+  distOrigin = L.latLng(lat, lng);
+  try{
+    if(tab === "find") setStatus(`${label}의 행정구역을 확인하는 중…`);
+    const r = await reverseGeocode(lat, lng);
+    document.getElementById("regionInput").value = r.query;
+    await search(r.query, r.sido, true);
+  }catch(e){
+    if(tab === "find") setStatus(`${label}의 구를 알아내지 못했습니다 (${esc(e.message)}). 지역을 직접 검색하세요.`, true);
+  }
+}
+
+function buildUrl(region, page){
+  const p = new URLSearchParams({ serviceKey: SERVICE_KEY, pageNo: page, numOfRows: PAGE_SIZE, returnType: "json" });
+  p.append("cond[ROAD_NM_ADDR::LIKE]", region);
+  const url = `${API_URL}?${p.toString()}`;
+  const proxy = proxyInput.value.trim();
+  return proxy ? proxy + encodeURIComponent(url) : url;
+}
+async function fetchPage(region, page){
+  let res;
+  try { res = await fetch(buildUrl(region, page)); } catch(e){ throw new Error("CORS"); }
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+  let json; try{ json = JSON.parse(text); }catch{ throw new Error("응답 해석 실패: " + text.slice(0,120)); }
+  const resp = json.response || json;
+  const code = resp?.header?.resultCode;
+  if(code && code !== "0" && code !== "00") throw new Error(`${code} ${resp.header.resultMsg || ""}`);
+  const body = resp.body || {};
+  let items = body.items?.item ?? body.items ?? [];
+  if(!Array.isArray(items)) items = items ? [items] : [];
+  return { items, total: Number(body.totalCount || 0) };
+}
+
+async function search(region, sido=null, keepView=false){
+  region = region.trim(); if(!region) return;
+  currentRegion = region;
+  const sk = sido ? sidoKey(sido) : null;
+  regionFilter = sk ? new RegExp(sk) : null;
+  if(tab === "find"){ setStatus(`<b>${esc(region)}</b> 매장을 불러오는 중…`); listEl.innerHTML = ""; }
+  try{
+    const first = await fetchPage(region, 1);
+    let all = first.items;
+    const pages = Math.min(Math.ceil(first.total / PAGE_SIZE), 30);
+    for(let start = 2; start <= pages; start += 5){
+      const batch = [];
+      for(let p = start; p < start + 5 && p <= pages; p++) batch.push(fetchPage(region, p));
+      (await Promise.all(batch)).forEach(r => all = all.concat(r.items));
+    }
+    rawRecords = all.map(normalize);
+    renderFind(!keepView && tab === "find");
+  }catch(e){
+    if(tab !== "find") return;
+    if(e.message === "CORS"){
+      setStatus(`브라우저가 공공데이터 API 직접 호출을 차단했습니다(CORS). ⚙️ 설정에서 CORS 프록시 접두어를 넣고 다시 검색하세요.`, true);
+      document.getElementById("settings").classList.add("open");
+    } else setStatus(`데이터를 불러오지 못했습니다: ${esc(e.message)}`, true);
+  }
+}
+
+function normalize(r){
+  const x = parseFloat(r.CRD_INFO_X), y = parseFloat(r.CRD_INFO_Y);
+  let latlng = null;
+  if(isFinite(x) && isFinite(y) && x > 0 && y > 0){
+    const [lat, lng] = toWGS84(x, y);
+    if(lat > 32 && lat < 39.5 && lng > 124 && lng < 132) latlng = L.latLng(lat, lng);
+  }
+  const road = r.ROAD_NM_ADDR || "", lot = r.LOTNO_ADDR || "";
+  return {
+    id: r.MNG_NO || `${r.BPLC_NM}|${road || lot}`,
+    name: r.BPLC_NM || "(이름 없음)", road, lot,
+    status: r.SALS_STTS_NM || r.DTL_SALS_STTS_NM || "", open: r.SALS_STTS_CD === "01",
+    latlng, haystack: Object.values(r).filter(v => typeof v === "string").join(" ")
+  };
+}
+
+function findRows(){
+  const kws = kwInput.value.split(",").map(s => s.trim()).filter(Boolean);
+  const onlyClaw = document.getElementById("onlyClaw").checked;
+  const onlyOpen = document.getElementById("onlyOpen").checked;
+  const rows = rawRecords.filter(r => {
+    if(regionFilter && !regionFilter.test(r.road + " " + r.lot)) return false;
+    if(onlyOpen && !r.open) return false;
+    if(onlyClaw && !kws.some(k => r.haystack.includes(k)) && !reportedFor(r)) return false;
+    return true;
+  });
+  const origin = distOrigin || meLatLng;
+  rows.forEach(r => r.dist = (origin && r.latlng) ? origin.distanceTo(r.latlng) : Infinity);
+  rows.sort((a,b) => a.dist - b.dist || a.name.localeCompare(b.name, "ko"));
+  return rows;
+}
+
+function toggleStar(r){
+  if(mine[r.id]) delete mine[r.id];
+  else {
+    const rep = reportedFor(r);
+    mine[r.id] = { name:r.name, road:r.road || r.lot, lat:r.latlng?.lat, lng:r.latlng?.lng, ts:Date.now(), reportedId: rep?.id };
+  }
+  if(!saveMine()) setStatus("이 브라우저에서는 저장이 안 돼요(사생활 보호 모드 등). 새로고침하면 표시가 사라집니다.", true);
+  renderFav(); renderFind();
+}
+
+function renderFindMarkers(){ if(rawRecords.length) renderFind(); }
+
+function renderFind(fit=false){
+  findLayer.clearLayers();
+  const rows = findRows();
+  const markers = [];
+  rows.forEach((r, i) => {
+    r._n = i + 1; r._marker = null;
+    if(!r.latlng || mine[r.id] || reportedFor(r)) return;   // ⭐·🎀 매장은 위 레이어에서 이미 표시
+    r._marker = L.marker(r.latlng, { icon: L.divIcon({ className:"", html:`<div class="dot">${r._n}</div>`, iconSize:[24,24], iconAnchor:[12,12], popupAnchor:[0,-10] }) })
+      .bindPopup(() => findPopup(r)).addTo(findLayer);
+    markers.push(r._marker);
+  });
+  if(tab !== "find") return;
+  listEl.innerHTML = "";
+  rows.forEach(r => {
+    const rep = reportedFor(r), starred = !!mine[r.id];
+    const el = document.createElement("div");
+    el.className = "item";
+    el.innerHTML = `<div class="badge ${rep ? "claw" : starred ? "mine" : "num"}">${rep ? "🎀" : starred ? "⭐" : r._n}</div>
+      <div class="body">
+        <div class="name">${esc(r.name)}</div>
+        <div class="addr">${esc(r.road || r.lot)}</div>
+        <div class="meta">
+          ${isFinite(r.dist) ? `<span class="tag dist">${fmtDist(r.dist)}</span>` : ""}
+          ${rep ? `<span class="tag claw">🎀 치이카와 제보 매장</span>` : ""}
+          <span class="tag">${esc(r.status)}</span>
+          ${r.latlng ? "" : `<span class="tag warn">좌표 없음</span>`}
+        </div>
+      </div>
+      <button class="star ${starred ? "on" : ""}" type="button">${starred ? "⭐ 확인함" : "☆ 치이카와 있음"}</button>`;
+    el.addEventListener("click", () => {
+      document.querySelectorAll(".item.active").forEach(x => x.classList.remove("active"));
+      el.classList.add("active");
+      if(r.latlng){
+        suppressMove = true; map.setView(r.latlng, 17);
+        if(r._marker) r._marker.openPopup();
+        else L.popup().setLatLng(r.latlng).setContent(findPopup(r)).openOn(map);
+      }
+    });
+    el.querySelector(".star").addEventListener("click", e => { e.stopPropagation(); toggleStar(r); });
+    listEl.appendChild(el);
+  });
+  setStatus(`<b>${esc(currentRegion)}</b> 뽑기방 <b>${rows.length}</b>곳 · 치이카와를 본 곳에 ☆를 눌러 주세요`);
+  if(!rows.length) listEl.innerHTML = `<div class="empty">조건에 맞는 매장이 없어요.<br>'인형뽑기 매장만'을 끄거나 다른 지역을 검색해 보세요.</div>`;
+  if(fit && markers.length){
+    const b = findLayer.getBounds(); if(meLatLng) b.extend(meLatLng);
+    suppressMove = true; map.fitBounds(b, { padding:[40,40], maxZoom: 16 });
+  }
+}
+
+function findPopup(r){
+  const starred = !!mine[r.id];
+  const div = document.createElement("div");
+  div.innerHTML = `<div class="pop-name">🧸 ${esc(r.name)}</div>
+    <div class="pop-row">${esc(r.road || r.lot)}</div>
+    <div class="pop-row">상태: ${esc(r.status)}</div>
+    ${isFinite(r.dist) ? `<div class="pop-row">${fmtDist(r.dist)}</div>` : ""}
+    <div class="pop-row" style="margin-top:6px">${mapLinks(r.name, r.road || r.lot)}</div>
+    <button class="star pop-star ${starred ? "on" : ""}" type="button">${starred ? "⭐ 확인함 (해제)" : "☆ 치이카와 있음"}</button>`;
+  div.querySelector("button").addEventListener("click", () => { map.closePopup(); toggleStar(r); });
+  return div;
+}
+
+/* ===== 탭 전환 ===== */
+function setTab(t){
+  tab = t;
+  document.getElementById("tabFav").classList.toggle("on", t === "fav");
+  document.getElementById("tabFind").classList.toggle("on", t === "find");
+  document.getElementById("paneFav").classList.toggle("on", t === "fav");
+  document.getElementById("paneFind").classList.toggle("on", t === "find");
+  if(t === "find") findLayer.addTo(map); else findLayer.remove();
+  if(t === "fav") renderFav(true);
+  else if(rawRecords.length) renderFind(true);
+  else if(currentRegion) search(currentRegion);
+  else { listEl.innerHTML = ""; setStatus("지역을 검색하거나 지도를 옮긴 뒤 '이 지역 뽑기방 찾기'를 누르세요."); }
+}
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => setTab(t.dataset.tab)));
+
+/* ===== 위치 ===== */
+function placeMe(lat, lng){
+  meLatLng = L.latLng(lat, lng);
+  if(meMarker) meMarker.setLatLng(meLatLng);
+  else meMarker = L.marker(meLatLng, { icon: L.divIcon({ className:"", html:'<div class="me"></div>', iconSize:[18,18], iconAnchor:[9,9] }), zIndexOffset: 1000 }).addTo(map).bindPopup('<div class="pop-name">📍 현재 위치</div>');
+}
+function locate(){
+  renderFav(false);
+  if(!navigator.geolocation){ renderFav(true); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    placeMe(pos.coords.latitude, pos.coords.longitude);
+    renderFav(true);
+    searchAt(pos.coords.latitude, pos.coords.longitude, "현재 위치");   // 주변 탭은 미리 준비
+  }, () => {
+    renderFav(true);
+    setStatus("위치 권한이 없어 거리순 정렬을 못 했어요. 제보 매장은 그대로 볼 수 있어요.");
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+}
+
+/* ===== 이벤트 ===== */
+const areaBtn = document.getElementById("areaBtn");
+map.on("moveend", () => { if(suppressMove){ suppressMove = false; return; } areaBtn.classList.add("show"); });
+areaBtn.addEventListener("click", () => {
+  areaBtn.classList.remove("show");
+  const c = map.getCenter();
+  if(tab !== "find") setTab("find");
+  rawRecords = [];
+  searchAt(c.lat, c.lng, "지도 중심");
+});
+document.getElementById("searchForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const parts = document.getElementById("regionInput").value.trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return;
+  let sido = null;
+  if(parts.length > 1 && sidoKey(parts[0]) && !/^광주시$/.test(parts[0])) sido = parts.shift();
+  distOrigin = null;
+  search(parts.join(" "), sido);
+});
+document.getElementById("settingsBtn").addEventListener("click", e => {
+  e.currentTarget.classList.toggle("on");
+  document.getElementById("settings").classList.toggle("open");
+});
+const appEl = document.querySelector(".app");
+document.getElementById("expandBtn").addEventListener("click", e => {
+  const big = appEl.classList.toggle("list-big");
+  e.currentTarget.textContent = big ? "지도 크게 ▼" : "목록 크게 ▲";
+  setTimeout(() => map.invalidateSize(), 300);
+});
+const myLocBtn = document.getElementById("myLocBtn");
+myLocBtn.addEventListener("click", () => {
+  if(!navigator.geolocation){ setStatus("이 브라우저는 위치 기능을 지원하지 않습니다.", true); return; }
+  myLocBtn.classList.add("busy");
+  navigator.geolocation.getCurrentPosition(pos => {
+    myLocBtn.classList.remove("busy");
+    placeMe(pos.coords.latitude, pos.coords.longitude);
+    map.setView(meLatLng, Math.max(map.getZoom(), 16));
+  }, err => {
+    myLocBtn.classList.remove("busy");
+    setStatus(`위치 권한을 얻지 못했습니다 (${esc(err.message)}).`, true);
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 });
+});
+["showClaw","showMine","showGoods"].forEach(id => document.getElementById(id).addEventListener("change", () => renderFav(true)));
+["onlyClaw","onlyOpen"].forEach(id => document.getElementById(id).addEventListener("change", () => renderFind(true)));
+
+locate();
+</script>
+</body>
+</html>
