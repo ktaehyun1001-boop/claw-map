@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 주변 인형뽑기 지도</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#fff7fb; --panel:#ffffff; --ink:#2b2233; --muted:#7a6f85; --line:#f0dfea;
+    --pink:#ff4f9a; --pink-d:#e0327f; --blue:#2f7cf6; --chip:#ffe6f1;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:"Noto Sans KR",system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+  .app{display:grid;grid-template-columns:380px 1fr;height:100vh}
+  aside{display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--line);min-height:0}
+  header{padding:18px 18px 12px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:20px;display:flex;align-items:center;gap:8px}
+  h1 .claw{font-size:24px}
+  .sub{margin:4px 0 0;font-size:12px;color:var(--muted)}
+  .controls{padding:12px 18px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+  .row{display:flex;gap:8px}
+  input[type=text]{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:14px;outline:none;background:#fffafc}
+  input[type=text]:focus{border-color:var(--pink)}
+  button{font:inherit;font-size:14px;border:0;border-radius:10px;padding:10px 14px;cursor:pointer;background:var(--pink);color:#fff;font-weight:500;white-space:nowrap}
+  button:hover{background:var(--pink-d)}
+  button.ghost{background:var(--chip);color:var(--pink-d)}
+  button.ghost:hover{background:#ffd3e6}
+  .toggles{display:flex;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--muted)}
+  .toggles label{display:flex;align-items:center;gap:5px;cursor:pointer}
+  .status{padding:10px 18px;font-size:13px;color:var(--muted);border-bottom:1px solid var(--line);min-height:40px}
+  .status b{color:var(--pink-d)}
+  .status.err{color:#c0392b;background:#fff1f0}
+  .list{flex:1;overflow:auto;padding:6px 10px 16px}
+  .item{padding:12px 10px;border-radius:12px;cursor:pointer;display:flex;gap:10px;align-items:flex-start}
+  .item:hover,.item.active{background:var(--chip)}
+  .item .num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--pink);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;margin-top:1px}
+  .item .num.nogeo{background:#c9bccf}
+  .item .name{font-weight:700;font-size:14px}
+  .item .addr{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.45}
+  .item .meta{font-size:11px;margin-top:4px;display:flex;gap:6px;flex-wrap:wrap}
+  .tag{background:#f5eff8;color:#6c5a7a;padding:2px 7px;border-radius:999px}
+  .tag.dist{background:#e8f1ff;color:var(--blue)}
+  .tag.closed{background:#eee;color:#888}
+  #map{height:100%;width:100%}
+  details.settings{font-size:12px;color:var(--muted)}
+  details.settings summary{cursor:pointer}
+  details.settings .box{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  details.settings input{font-size:12px;padding:7px 9px}
+  .pin{width:30px;height:30px;border-radius:50% 50% 50% 0;background:var(--pink);transform:rotate(-45deg);display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.25);border:2px solid #fff}
+  .pin span{transform:rotate(45deg);font-size:11px;font-weight:700;color:#fff}
+  .me{width:18px;height:18px;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 0 rgba(47,124,246,.6);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(47,124,246,.55)}70%{box-shadow:0 0 0 16px rgba(47,124,246,0)}100%{box-shadow:0 0 0 0 rgba(47,124,246,0)}}
+  .leaflet-popup-content{font-family:"Noto Sans KR",sans-serif;font-size:13px;line-height:1.5;margin:12px 14px}
+  .pop-name{font-weight:700;font-size:14px;margin-bottom:4px}
+  .pop-row{color:#555}
+  .pop-row a{color:var(--blue)}
+  @media (max-width:800px){
+    .app{grid-template-columns:1fr;grid-template-rows:55vh 1fr}
+    aside{order:2;border-right:0;border-top:1px solid var(--line)}
+    #map{order:1}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <header>
+      <h1><span class="claw">🧸</span>내 주변 인형뽑기 지도</h1>
+      <p class="sub">행정안전부 문화_청소년게임제공업 조회서비스 · 공공데이터포털</p>
+    </header>
+    <div class="controls">
+      <form class="row" id="searchForm">
+        <input type="text" id="regionInput" placeholder="지역 검색 (예: 마포구, 성남시 분당구)">
+        <button type="submit">검색</button>
+      </form>
+      <div class="row">
+        <button class="ghost" id="locateBtn" type="button" style="flex:1">📍 내 위치의 구로 다시 검색</button>
+      </div>
+      <div class="toggles">
+        <label><input type="checkbox" id="onlyClaw" checked> 인형뽑기 매장만</label>
+        <label><input type="checkbox" id="onlyOpen" checked> 영업중만</label>
+      </div>
+      <details class="settings">
+        <summary>설정 (인형뽑기 키워드 · CORS 프록시)</summary>
+        <div class="box">
+          <label>인형뽑기 판별 키워드 (쉼표 구분)</label>
+          <input type="text" id="kwInput">
+          <label>CORS 프록시 접두어 (브라우저가 API 직접 호출을 막을 때만)</label>
+          <input type="text" id="proxyInput" placeholder="예: https://corsproxy.io/?url=">
+        </div>
+      </details>
+    </div>
+    <div class="status" id="status">현재 위치를 확인하는 중…</div>
+    <div class="list" id="list"></div>
+  </aside>
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+<script>
+/* ===== 설정 ===== */
+const API_URL = "https://apis.data.go.kr/1741000/youth_game_providers/info";
+const SERVICE_KEY = "703ea2a7ba3a85e184ff518bd5f848b1ac39936618e17e68f1374ebd758b3f07";
+const PAGE_SIZE = 100;
+const DEFAULT_KW = "인형,뽑기,크레인,캐치,캣치,피규어,경품,토이,가챠";
+const DEFAULT_CENTER = [37.5665, 126.9780]; // 위치 권한이 없을 때: 서울시청
+
+// 인허가 데이터 좌표계: EPSG:5174 (Bessel 중부원점 TM, 보정된 파라미터)
+proj4.defs("EPSG:5174","+proj=tmerc +lat_0=38 +lon_0=127.0028902777778 +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +units=m +no_defs +towgs84=-115.80,474.99,674.11,1.16,-2.31,-1.63,6.43");
+const toWGS84 = (x, y) => { const [lng, lat] = proj4("EPSG:5174", "WGS84", [x, y]); return [lat, lng]; };
+
+/* ===== 저장된 설정 ===== */
+const store = {
+  get(k, d){ try{ return localStorage.getItem(k) ?? d; }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, v); }catch{} }
+};
+const kwInput = document.getElementById("kwInput");
+const proxyInput = document.getElementById("proxyInput");
+kwInput.value = store.get("clawKw", DEFAULT_KW);
+proxyInput.value = store.get("clawProxy", "");
+kwInput.addEventListener("change", () => { store.set("clawKw", kwInput.value); render(); });
+proxyInput.addEventListener("change", () => store.set("clawProxy", proxyInput.value.trim()));
+
+/* ===== 지도 ===== */
+const map = L.map("map", { zoomControl: true }).setView(DEFAULT_CENTER, 13);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+const storeLayer = L.featureGroup().addTo(map);
+let meMarker = null, meLatLng = null;
+
+/* ===== 상태 ===== */
+const statusEl = document.getElementById("status");
+const listEl = document.getElementById("list");
+let rawRecords = [], currentRegion = "", regionFilter = null;
+
+function setStatus(html, isErr=false){ statusEl.innerHTML = html; statusEl.classList.toggle("err", isErr); }
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* ===== 현재 위치 → 구 ===== */
+const SIDO = [
+  ["서울","서울특별시"],["부산","부산광역시"],["대구","대구광역시"],["인천","인천광역시"],["광주","광주광역시"],
+  ["대전","대전광역시"],["울산","울산광역시"],["세종","세종특별자치시"],["경기","경기도"],["강원","강원"],
+  ["충청북","충청북도"],["충북","충청북도"],["충청남","충청남도"],["충남","충청남도"],["전라북","전북|전라북도"],["전북","전북|전라북도"],
+  ["전라남","전라남도"],["전남","전라남도"],["경상북","경상북도"],["경북","경상북도"],["경상남","경상남도"],["경남","경상남도"],["제주","제주"]
+];
+function sidoKey(text){ if(!text) return null; for(const [k,v] of SIDO) if(text.includes(k)) return v; return null; }
+
+async function reverseGeocode(lat, lng){
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1&accept-language=ko`;
+  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  if(!res.ok) throw new Error("역지오코딩 실패");
+  const a = (await res.json()).address || {};
+  const pick = (...keys) => keys.map(k => a[k]).find(v => v && /(구|군|시)$/.test(v));
+  const gu = pick("borough","city_district","district","county","suburb");
+  const city = pick("city","town","municipality");
+  const sido = sidoKey(a.province || a.state || a.city || "");
+  let query, label;
+  if (gu && city && city !== gu && /시$/.test(city) && !/(특별시|광역시|특별자치시)$/.test(city) && /구$/.test(gu)) {
+    query = `${city} ${gu}`; label = query;           // 예: 성남시 분당구
+  } else if (gu) {
+    query = gu; label = gu;                           // 예: 강남구
+  } else if (city) {
+    query = city; label = city;                       // 예: 당진시
+  } else throw new Error("구 정보를 찾지 못했습니다");
+  return { query, label, sido };
+}
+
+function locate(){
+  setStatus("현재 위치를 확인하는 중…");
+  if(!navigator.geolocation){ setStatus("이 브라우저는 위치 기능을 지원하지 않습니다. 지역을 직접 검색하세요.", true); return; }
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+    meLatLng = L.latLng(lat, lng);
+    if(meMarker) meMarker.remove();
+    meMarker = L.marker(meLatLng, { icon: L.divIcon({ className:"", html:'<div class="me"></div>', iconSize:[18,18], iconAnchor:[9,9] }), zIndexOffset: 1000 })
+      .addTo(map).bindPopup(`<div class="pop-name">📍 현재 위치</div><div class="pop-row">정확도 약 ${Math.round(accuracy)}m</div>`);
+    map.setView(meLatLng, 14);
+    try{
+      setStatus("현재 위치의 행정구역을 확인하는 중…");
+      const r = await reverseGeocode(lat, lng);
+      document.getElementById("regionInput").value = r.label;
+      await search(r.query, r.sido);
+    }catch(e){
+      setStatus(`현재 위치의 구를 알아내지 못했습니다 (${esc(e.message)}). 지역을 직접 검색하세요.`, true);
+    }
+  }, err => {
+    setStatus(`위치 권한을 얻지 못했습니다 (${esc(err.message)}). 지역을 직접 검색하세요.`, true);
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+}
+
+/* ===== API 호출 ===== */
+function buildUrl(region, page){
+  const p = new URLSearchParams({ serviceKey: SERVICE_KEY, pageNo: page, numOfRows: PAGE_SIZE, returnType: "json" });
+  p.append("cond[ROAD_NM_ADDR::LIKE]", region);
+  const url = `${API_URL}?${p.toString()}`;
+  const proxy = proxyInput.value.trim();
+  return proxy ? proxy + encodeURIComponent(url) : url;
+}
+async function fetchPage(region, page){
+  let res;
+  try { res = await fetch(buildUrl(region, page)); }
+  catch(e){ throw new Error("CORS"); }
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+  let json; try{ json = JSON.parse(text); }catch{ throw new Error("응답 해석 실패: " + text.slice(0,120)); }
+  const resp = json.response || json;
+  const code = resp?.header?.resultCode;
+  if(code && code !== "0" && code !== "00") throw new Error(`${code} ${resp.header.resultMsg || ""}`);
+  const body = resp.body || {};
+  let items = body.items?.item ?? body.items ?? [];
+  if(!Array.isArray(items)) items = items ? [items] : [];
+  return { items, total: Number(body.totalCount || 0) };
+}
+
+async function search(region, sido=null){
+  region = region.trim(); if(!region) return;
+  currentRegion = region;
+  const sk = sido ? sidoKey(sido) : null;
+  regionFilter = sk ? new RegExp(sk) : null;
+  setStatus(`<b>${esc(region)}</b> 매장을 불러오는 중…`);
+  listEl.innerHTML = "";
+  try{
+    const first = await fetchPage(region, 1);
+    let all = first.items;
+    const pages = Math.min(Math.ceil(first.total / PAGE_SIZE), 30);
+    for(let start = 2; start <= pages; start += 5){
+      const batch = [];
+      for(let p = start; p < start + 5 && p <= pages; p++) batch.push(fetchPage(region, p));
+      (await Promise.all(batch)).forEach(r => all = all.concat(r.items));
+      setStatus(`<b>${esc(region)}</b> 매장을 불러오는 중… (${all.length}/${first.total})`);
+    }
+    rawRecords = all.map(normalize);
+    render(true);
+  }catch(e){
+    if(e.message === "CORS"){
+      setStatus(`브라우저가 공공데이터 API 직접 호출을 차단했습니다(CORS). 아래 <b>설정</b>에서 CORS 프록시 접두어를 넣고 다시 검색하세요.`, true);
+      document.querySelector("details.settings").open = true;
+    } else setStatus(`데이터를 불러오지 못했습니다: ${esc(e.message)}`, true);
+  }
+}
+
+function normalize(r){
+  const x = parseFloat(r.CRD_INFO_X), y = parseFloat(r.CRD_INFO_Y);
+  let latlng = null;
+  if(isFinite(x) && isFinite(y) && x > 0 && y > 0){
+    const [lat, lng] = toWGS84(x, y);
+    if(lat > 32 && lat < 39.5 && lng > 124 && lng < 132) latlng = L.latLng(lat, lng);
+  }
+  const haystack = Object.values(r).filter(v => typeof v === "string").join(" ");
+  return {
+    name: r.BPLC_NM || "(이름 없음)",
+    road: r.ROAD_NM_ADDR || "", lot: r.LOTNO_ADDR || "",
+    status: r.SALS_STTS_NM || r.DTL_SALS_STTS_NM || "",
+    open: r.SALS_STTS_CD === "01",
+    tel: r.TELNO || "", area: r.FCAR || "", machines: r.TOTAL_GMCON_CNT,
+    licensed: r.LCPMT_YMD || "", latlng, haystack
+  };
+}
+
+/* ===== 렌더링 ===== */
+function fmtDist(m){ return m < 1000 ? `${Math.round(m)}m` : `${(m/1000).toFixed(1)}km`; }
+
+function render(fit=false){
+  const kws = kwInput.value.split(",").map(s => s.trim()).filter(Boolean);
+  const onlyClaw = document.getElementById("onlyClaw").checked;
+  const onlyOpen = document.getElementById("onlyOpen").checked;
+  let rows = rawRecords.filter(r => {
+    if(regionFilter && !regionFilter.test(r.road + " " + r.lot)) return false;
+    if(onlyOpen && !r.open) return false;
+    if(onlyClaw && !kws.some(k => r.haystack.includes(k))) return false;
+    return true;
+  });
+  rows.forEach(r => r.dist = (meLatLng && r.latlng) ? meLatLng.distanceTo(r.latlng) : Infinity);
+  rows.sort((a,b) => a.dist - b.dist || a.name.localeCompare(b.name, "ko"));
+
+  storeLayer.clearLayers();
+  listEl.innerHTML = "";
+  const markers = [];
+  rows.forEach((r, i) => {
+    const n = i + 1;
+    let marker = null;
+    if(r.latlng){
+      marker = L.marker(r.latlng, { icon: L.divIcon({ className:"", html:`<div class="pin"><span>${n}</span></div>`, iconSize:[30,30], iconAnchor:[15,30], popupAnchor:[0,-28] }) })
+        .bindPopup(popupHtml(r)).addTo(storeLayer);
+      markers.push(marker);
+    }
+    const el = document.createElement("div");
+    el.className = "item";
+    el.innerHTML = `<div class="num ${r.latlng ? "" : "nogeo"}">${n}</div>
+      <div><div class="name">${esc(r.name)}</div>
+      <div class="addr">${esc(r.road || r.lot)}</div>
+      <div class="meta">
+        ${isFinite(r.dist) ? `<span class="tag dist">${fmtDist(r.dist)}</span>` : ""}
+        <span class="tag ${r.open ? "" : "closed"}">${esc(r.status)}</span>
+        ${r.latlng ? "" : `<span class="tag closed">좌표 없음</span>`}
+      </div></div>`;
+    el.addEventListener("click", () => {
+      document.querySelectorAll(".item.active").forEach(x => x.classList.remove("active"));
+      el.classList.add("active");
+      if(marker){ map.setView(r.latlng, 17); marker.openPopup(); }
+    });
+    if(marker) marker.on("click", () => { el.scrollIntoView({ block:"nearest", behavior:"smooth" }); document.querySelectorAll(".item.active").forEach(x => x.classList.remove("active")); el.classList.add("active"); });
+    listEl.appendChild(el);
+  });
+
+  const label = document.getElementById("onlyClaw").checked ? "인형뽑기 매장" : "청소년게임제공업소";
+  setStatus(`<b>${esc(currentRegion)}</b> ${label} <b>${rows.length}</b>곳 <span style="opacity:.7">(전체 ${rawRecords.length}건 중)</span>`);
+  if(!rows.length) listEl.innerHTML = `<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">조건에 맞는 매장이 없습니다.<br>'인형뽑기 매장만'을 끄거나 다른 지역을 검색해 보세요.</div>`;
+
+  if(fit && markers.length){
+    const b = storeLayer.getBounds(); if(meLatLng) b.extend(meLatLng);
+    map.fitBounds(b, { padding:[40,40], maxZoom: 16 });
+  }
+}
+
+function popupHtml(r){
+  const q = encodeURIComponent(r.name + " " + (r.road || r.lot));
+  return `<div class="pop-name">🧸 ${esc(r.name)}</div>
+    <div class="pop-row">${esc(r.road || r.lot)}</div>
+    ${r.road && r.lot ? `<div class="pop-row" style="font-size:12px;opacity:.75">지번: ${esc(r.lot)}</div>` : ""}
+    <div class="pop-row">상태: ${esc(r.status)}${r.licensed ? ` · 인허가 ${esc(r.licensed)}` : ""}</div>
+    ${r.area ? `<div class="pop-row">면적: ${esc(r.area)}㎡${r.machines ? ` · 게임기 ${esc(r.machines)}대` : ""}</div>` : ""}
+    ${r.tel ? `<div class="pop-row">☎ ${esc(r.tel)}</div>` : ""}
+    ${isFinite(r.dist) ? `<div class="pop-row">현재 위치에서 ${fmtDist(r.dist)}</div>` : ""}
+    <div class="pop-row" style="margin-top:6px"><a href="https://map.naver.com/p/search/${q}" target="_blank" rel="noopener">네이버 지도</a> · <a href="https://map.kakao.com/?q=${q}" target="_blank" rel="noopener">카카오맵</a></div>`;
+}
+
+/* ===== 이벤트 ===== */
+document.getElementById("searchForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const parts = document.getElementById("regionInput").value.trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return;
+  // 첫 단어가 시·도이면(예: "서울 강남구") API 검색어에서는 빼고 결과를 시·도로 거름
+  let sido = null;
+  if(parts.length > 1 && sidoKey(parts[0]) && !/^광주시$/.test(parts[0])){
+    sido = parts.shift();
+  }
+  search(parts.join(" "), sido);
+});
+document.getElementById("locateBtn").addEventListener("click", locate);
+document.getElementById("onlyClaw").addEventListener("change", () => render(true));
+document.getElementById("onlyOpen").addEventListener("change", () => render(true));
+
+locate();
+</script>
+</body>
+</html>
