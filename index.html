@@ -44,7 +44,10 @@
   .tag{background:#f5eff8;color:#6c5a7a;padding:2px 7px;border-radius:999px}
   .tag.dist{background:#e8f1ff;color:var(--blue)}
   .tag.closed{background:#eee;color:#888}
+  .mapwrap{position:relative;min-height:0}
   #map{height:100%;width:100%}
+  #areaBtn{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:1000;border-radius:999px;padding:10px 18px;box-shadow:0 3px 12px rgba(0,0,0,.2);display:none}
+  #areaBtn.show{display:block}
   details.settings{font-size:12px;color:var(--muted)}
   details.settings summary{cursor:pointer}
   details.settings .box{margin-top:8px;display:flex;flex-direction:column;gap:6px}
@@ -60,7 +63,7 @@
   @media (max-width:800px){
     .app{grid-template-columns:1fr;grid-template-rows:55vh 1fr}
     aside{order:2;border-right:0;border-top:1px solid var(--line)}
-    #map{order:1}
+    .mapwrap{order:1}
   }
 </style>
 </head>
@@ -96,7 +99,10 @@
     <div class="status" id="status">현재 위치를 확인하는 중…</div>
     <div class="list" id="list"></div>
   </aside>
-  <div id="map"></div>
+  <div class="mapwrap">
+    <div id="map"></div>
+    <button id="areaBtn" type="button">🔍 이 지역에서 검색</button>
+  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -179,19 +185,34 @@ function locate(){
     if(meMarker) meMarker.remove();
     meMarker = L.marker(meLatLng, { icon: L.divIcon({ className:"", html:'<div class="me"></div>', iconSize:[18,18], iconAnchor:[9,9] }), zIndexOffset: 1000 })
       .addTo(map).bindPopup(`<div class="pop-name">📍 현재 위치</div><div class="pop-row">정확도 약 ${Math.round(accuracy)}m</div>`);
-    map.setView(meLatLng, 14);
-    try{
-      setStatus("현재 위치의 행정구역을 확인하는 중…");
-      const r = await reverseGeocode(lat, lng);
-      document.getElementById("regionInput").value = r.label;
-      await search(r.query, r.sido);
-    }catch(e){
-      setStatus(`현재 위치의 구를 알아내지 못했습니다 (${esc(e.message)}). 지역을 직접 검색하세요.`, true);
-    }
+    suppressMove = true; map.setView(meLatLng, 14);
+    await searchAt(lat, lng, "현재 위치");
   }, err => {
     setStatus(`위치 권한을 얻지 못했습니다 (${esc(err.message)}). 지역을 직접 검색하세요.`, true);
   }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
 }
+
+/* ===== 지도 위치 기준 검색 ===== */
+let distOrigin = null;   // 거리 계산 기준점
+async function searchAt(lat, lng, label){
+  distOrigin = L.latLng(lat, lng);
+  try{
+    setStatus(`${label}의 행정구역을 확인하는 중…`);
+    const r = await reverseGeocode(lat, lng);
+    document.getElementById("regionInput").value = r.label;
+    await search(r.query, r.sido, true);
+  }catch(e){
+    setStatus(`${label}의 구를 알아내지 못했습니다 (${esc(e.message)}). 지역을 직접 검색하세요.`, true);
+  }
+}
+const areaBtn = document.getElementById("areaBtn");
+let suppressMove = false;
+map.on("moveend", () => { if(suppressMove){ suppressMove = false; return; } areaBtn.classList.add("show"); });
+areaBtn.addEventListener("click", () => {
+  areaBtn.classList.remove("show");
+  const c = map.getCenter();
+  searchAt(c.lat, c.lng, "지도 중심");
+});
 
 /* ===== API 호출 ===== */
 function buildUrl(region, page){
@@ -217,7 +238,8 @@ async function fetchPage(region, page){
   return { items, total: Number(body.totalCount || 0) };
 }
 
-async function search(region, sido=null){
+async function search(region, sido=null, keepView=false){
+  if(!keepView) distOrigin = null;
   region = region.trim(); if(!region) return;
   currentRegion = region;
   const sk = sido ? sidoKey(sido) : null;
@@ -235,7 +257,7 @@ async function search(region, sido=null){
       setStatus(`<b>${esc(region)}</b> 매장을 불러오는 중… (${all.length}/${first.total})`);
     }
     rawRecords = all.map(normalize);
-    render(true);
+    render(!keepView);
   }catch(e){
     if(e.message === "CORS"){
       setStatus(`브라우저가 공공데이터 API 직접 호출을 차단했습니다(CORS). 아래 <b>설정</b>에서 CORS 프록시 접두어를 넣고 다시 검색하세요.`, true);
@@ -275,7 +297,8 @@ function render(fit=false){
     if(onlyClaw && !kws.some(k => r.haystack.includes(k))) return false;
     return true;
   });
-  rows.forEach(r => r.dist = (meLatLng && r.latlng) ? meLatLng.distanceTo(r.latlng) : Infinity);
+  const origin = distOrigin || meLatLng;
+  rows.forEach(r => r.dist = (origin && r.latlng) ? origin.distanceTo(r.latlng) : Infinity);
   rows.sort((a,b) => a.dist - b.dist || a.name.localeCompare(b.name, "ko"));
 
   storeLayer.clearLayers();
@@ -302,7 +325,7 @@ function render(fit=false){
     el.addEventListener("click", () => {
       document.querySelectorAll(".item.active").forEach(x => x.classList.remove("active"));
       el.classList.add("active");
-      if(marker){ map.setView(r.latlng, 17); marker.openPopup(); }
+      if(marker){ suppressMove = true; map.setView(r.latlng, 17); marker.openPopup(); }
     });
     if(marker) marker.on("click", () => { el.scrollIntoView({ block:"nearest", behavior:"smooth" }); document.querySelectorAll(".item.active").forEach(x => x.classList.remove("active")); el.classList.add("active"); });
     listEl.appendChild(el);
@@ -314,7 +337,7 @@ function render(fit=false){
 
   if(fit && markers.length){
     const b = storeLayer.getBounds(); if(meLatLng) b.extend(meLatLng);
-    map.fitBounds(b, { padding:[40,40], maxZoom: 16 });
+    suppressMove = true; map.fitBounds(b, { padding:[40,40], maxZoom: 16 });
   }
 }
 
@@ -326,7 +349,7 @@ function popupHtml(r){
     <div class="pop-row">상태: ${esc(r.status)}${r.licensed ? ` · 인허가 ${esc(r.licensed)}` : ""}</div>
     ${r.area ? `<div class="pop-row">면적: ${esc(r.area)}㎡${r.machines ? ` · 게임기 ${esc(r.machines)}대` : ""}</div>` : ""}
     ${r.tel ? `<div class="pop-row">☎ ${esc(r.tel)}</div>` : ""}
-    ${isFinite(r.dist) ? `<div class="pop-row">현재 위치에서 ${fmtDist(r.dist)}</div>` : ""}
+    ${isFinite(r.dist) ? `<div class="pop-row">${distOrigin ? "검색 위치" : "현재 위치"}에서 ${fmtDist(r.dist)}</div>` : ""}
     <div class="pop-row" style="margin-top:6px"><a href="https://map.naver.com/p/search/${q}" target="_blank" rel="noopener">네이버 지도</a> · <a href="https://map.kakao.com/?q=${q}" target="_blank" rel="noopener">카카오맵</a></div>`;
 }
 
